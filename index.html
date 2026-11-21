@@ -31,6 +31,7 @@ input[type=range]{width:100%}
 #fl:not(.hide){display:flex}
 #fl button{width:56px;height:56px;padding:0;font-size:30px;line-height:1;border-radius:50%;box-shadow:0 2px 10px rgba(0,0,0,.5);touch-action:none}
 #fd{background:rgba(0,0,0,.7);color:#fff;font-size:12px;padding:3px 8px;border-radius:10px;white-space:nowrap}
+#conf{font-size:28px;margin-bottom:8px}
 #lupa{position:absolute;top:8px;width:55%;max-width:300px;aspect-ratio:1;border:2px solid #ffd400;border-radius:14px;background:#000;pointer-events:none;box-shadow:0 2px 12px rgba(0,0,0,.55)}
 </style>
 </head>
@@ -50,6 +51,7 @@ input[type=range]{width:100%}
   <canvas id='cv' width='300' height='200'></canvas>
   <canvas id='lupa' class='hide'></canvas>
   <div id='fl' class='hide'>
+    <button id='conf' class='pri' aria-label='Confirmar este objeto'>✔</button>
     <button id='dp' aria-label='Aumentar o círculo'>+</button>
     <div id='fd'></div>
     <button id='dm' aria-label='Diminuir o círculo'>−</button>
@@ -58,7 +60,6 @@ input[type=range]{width:100%}
 
 <div id='adjBox' class='card hide'>
   <div id='info' class='mut' style='margin-top:6px'></div>
-  <button id='conf' class='pri' style='margin-top:8px;width:100%'>Confirmar este objeto</button>
   <button id='cancel' style='margin-top:8px;width:100%'>✖ Cancelar este círculo</button>
 </div>
 
@@ -214,23 +215,50 @@ function xy(e){
   const r=cv.getBoundingClientRect();
   return [Math.round((e.clientX-r.left)*W/r.width),Math.round((e.clientY-r.top)*H/r.height)];
 }
-let drag=null;
+// Gestos: um dedo dentro do círculo arrasta; dois dedos (pinça) aumentam ou diminuem o círculo; a foto não se mexe
+const ptrs=new Map();   // dedos ativos (posição em pixels da foto)
+let drag=null,pinch=null,tapC=null;
+function iniciaDrag(id){
+  const p=ptrs.get(id);if(!p||!cur)return;
+  drag={id,dx:cur.cx-p.x,dy:cur.cy-p.y};
+}
 cv.addEventListener('pointerdown',e=>{
   if(!base){$('msg').innerHTML='<b>Tire uma foto primeiro.</b>';return;}
   const [x,y]=xy(e);
-  if(cur&&mode!=='fim'&&Math.hypot(x-cur.cx,y-cur.cy)<=cur.d/2*1.3){
-    drag={dx:cur.cx-x,dy:cur.cy-y};cv.setPointerCapture(e.pointerId);return;
+  ptrs.set(e.pointerId,{x,y});cv.setPointerCapture(e.pointerId);
+  if(ptrs.size>=2&&cur&&mode!=='fim'){   // segundo dedo: começa a pinça
+    const [a,b]=[...ptrs.values()];
+    pinch={d0:Math.hypot(a.x-b.x,a.y-b.y)||1,s0:cur.d,mx:(a.x+b.x)/2,my:(a.y+b.y)/2,cx:cur.cx,cy:cur.cy};
+    drag=null;tapC=null;return;
   }
-  tapAt(x,y);
+  if(cur&&mode!=='fim'&&Math.hypot(x-cur.cx,y-cur.cy)<=cur.d/2*1.3){iniciaDrag(e.pointerId);tapC=null;return;}
+  tapC={id:e.pointerId,x,y};   // toque simples: detecta ao soltar o dedo
 });
 cv.addEventListener('pointermove',e=>{
-  if(!drag)return;
-  const [x,y]=xy(e);
-  cur.cx=Math.max(0,Math.min(W,x+drag.dx));cur.cy=Math.max(0,Math.min(H,y+drag.dy));
-  atualizar();
+  const p=ptrs.get(e.pointerId);if(!p)return;
+  const [x,y]=xy(e);p.x=x;p.y=y;
+  if(tapC&&tapC.id===e.pointerId&&Math.hypot(x-tapC.x,y-tapC.y)>8)tapC=null;   // moveu: não é toque
+  if(pinch&&ptrs.size>=2&&cur){
+    const [a,b]=[...ptrs.values()],dd=Math.hypot(a.x-b.x,a.y-b.y);
+    cur.d=Math.round(Math.max(10,Math.min(Math.min(W,H),pinch.s0*dd/pinch.d0)));
+    cur.cx=Math.max(0,Math.min(W,pinch.cx+(a.x+b.x)/2-pinch.mx));
+    cur.cy=Math.max(0,Math.min(H,pinch.cy+(a.y+b.y)/2-pinch.my));
+    atualizar();
+  }else if(drag&&drag.id===e.pointerId&&cur){
+    cur.cx=Math.max(0,Math.min(W,x+drag.dx));cur.cy=Math.max(0,Math.min(H,y+drag.dy));
+    atualizar();
+  }
 });
-const fimDrag=()=>{drag=null;};
-cv.addEventListener('pointerup',fimDrag);cv.addEventListener('pointercancel',fimDrag);
+function soltou(e){
+  if(!ptrs.delete(e.pointerId))return;
+  if(e.type==='pointerup'&&tapC&&tapC.id===e.pointerId){const t=tapC;tapC=null;tapAt(t.x,t.y);}
+  if(pinch&&ptrs.size<2){
+    pinch=null;drag=null;
+    if(ptrs.size===1&&cur)iniciaDrag([...ptrs.keys()][0]);   // sobrou um dedo: volta a arrastar
+  }
+  if(drag&&drag.id===e.pointerId)drag=null;
+}
+cv.addEventListener('pointerup',soltou);cv.addEventListener('pointercancel',soltou);
 
 // Toque: detecta o objeto (na bola 2 usa a cor da bola 1) e mostra o círculo para ajuste
 function tapAt(x,y){
@@ -241,7 +269,7 @@ function tapAt(x,y){
   cur=segment(x,y,col,tol)||{cx:x,cy:y,d:Math.round(mode==='m2'?objs[1].d:W/6),col:pc};
   $('adjBox').classList.remove('hide');
   const nome={m0:'do bolim',m1:'da bola 1',m2:'da bola 2'}[mode];
-  $('msg').innerHTML=`Arraste o círculo até o <b>centro</b> ${nome}, ajuste o tamanho e toque em <b>Confirmar</b>.`;
+  $('msg').innerHTML=`Arraste o círculo até o <b>centro</b> ${nome}. Use <b>dois dedos</b> (ou a roda do mouse) para aumentar ou diminuir e toque em <b>✔</b> para confirmar.`;
   atualizar();
 }
 
