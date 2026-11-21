@@ -7,7 +7,8 @@
 <style>
 :root{--bg:#f6f5f1;--fg:#1d1d1b;--card:#fff;--mut:#6b6b66;--ac:#1f7a4d;--acfg:#fff;--bd:#d9d7cf;--bad:#c0392b;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 @media (prefers-color-scheme:dark){:root{--bg:#161715;--fg:#ecebe6;--card:#222421;--mut:#9a9a93;--ac:#3fae77;--acfg:#0b1a12;--bd:#3a3c38;--bad:#ff7b6b}}
-*{box-sizing:border-box}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+#resBox{-webkit-user-select:text;user-select:text}
 body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.4 system-ui,sans-serif}
 main{max-width:640px;margin:0 auto;padding:12px}
 h1{font-size:20px;margin:4px 0 10px}
@@ -32,6 +33,22 @@ input[type=range]{width:100%}
 #fl button{width:56px;height:56px;padding:0;font-size:30px;line-height:1;border-radius:50%;box-shadow:0 2px 10px rgba(0,0,0,.5);touch-action:none}
 #fd{background:rgba(0,0,0,.7);color:#fff;font-size:12px;padding:3px 8px;border-radius:10px;white-space:nowrap}
 #conf{font-size:28px;margin-bottom:8px}
+/* modo tela cheia: ativado ao tirar a foto */
+body.full{overflow:hidden}
+body.full h1{display:none}
+body.full #wrap{position:fixed;top:0;left:0;right:0;bottom:0;z-index:50;margin:0;background:#000;display:flex;align-items:center;justify-content:center}
+body.full #cv{border-radius:0}
+body.full #lupa{top:calc(env(safe-area-inset-top,0px) + 92px)}
+body.full #fl{bottom:calc(env(safe-area-inset-bottom,0px) + 190px)}
+body.full #msgc{position:fixed;top:env(safe-area-inset-top,0px);left:8px;right:8px;z-index:60;margin:8px 0 0;padding:8px 12px;font-size:14px;background:rgba(0,0,0,.72);color:#fff;border-color:transparent}
+#bar{display:flex;flex-direction:column;gap:6px;width:44px;margin-bottom:10px}
+#bar>*{flex:none;width:44px;height:44px;padding:0;font-size:20px;display:flex;align-items:center;justify-content:center;border-radius:12px}
+body.full #bar{position:fixed;left:8px;bottom:calc(env(safe-area-inset-bottom,0px) + 8px);z-index:60;margin:0}
+body.full #adjBox{position:fixed;left:60px;right:8px;bottom:calc(env(safe-area-inset-bottom,0px) + 84px);z-index:60;margin:0;max-height:40vh;overflow:auto}
+body.full #resBox{position:fixed;top:calc(env(safe-area-inset-top,0px) + 8px);left:50%;transform:translateX(-50%);z-index:60;margin:0;width:max-content;max-width:92vw;padding:8px 14px;font-size:15px;background:rgba(0,0,0,.55);color:#fff;border-color:transparent;pointer-events:none}
+body.full #resBox div{padding:2px 0;border:0}
+body.full #resBox .win{color:#6ee7a8}
+body.full #resBox .mut{color:#d6d6d6;font-size:13px}
 #lupa{position:absolute;top:8px;width:55%;max-width:300px;aspect-ratio:1;border:2px solid #ffd400;border-radius:14px;background:#000;pointer-events:none;box-shadow:0 2px 12px rgba(0,0,0,.55)}
 </style>
 </head>
@@ -39,12 +56,12 @@ input[type=range]{width:100%}
 <main>
 <h1>⚪ Medidor de Bocha</h1>
 
-<div class='card'><div id='msg'></div></div>
+<div class='card' id='msgc'><div id='msg'></div></div>
 
-<div class='row' style='margin-bottom:10px'>
-  <label class='btn pri'>📷 Tirar foto<input id='file' type='file' accept='image/*' capture='environment' hidden></label>
-  <button id='refazer'>↺ Refazer tudo</button>
-  <button id='undo'>↩ Desfazer último</button>
+<div class='row' id='bar'>
+  <label class='btn pri' title='Tirar foto' aria-label='Tirar foto'>📷<input id='file' type='file' accept='image/*' capture='environment' hidden></label>
+  <button id='refazer' title='Refazer tudo' aria-label='Refazer tudo'>↺</button>
+  <button id='undo' title='Desfazer último' aria-label='Desfazer último'>↩</button>
 </div>
 
 <div id='wrap'>
@@ -88,6 +105,7 @@ function setMode(m,keep){
     m2:'Toque na <b>segunda bola</b> a medir. As duas bolas precisam ter o <b>mesmo diâmetro</b>.',
     fim:'Pronto! Toque em Refazer para uma nova medição.'};
   $('msg').innerHTML=M[m];
+  $('msgc').classList.toggle('hide',m==='fim');   // no resultado, a barra de instrução some para não cobrir a foto
   redraw();lupa();
 }
 $('refazer').onclick=()=>setMode('m0');
@@ -122,7 +140,7 @@ $('file').onchange=e=>{
     W=cv.width=Math.round(im.width*s);H=cv.height=Math.round(im.height*s);
     ctx.drawImage(im,0,0,W,H);base=ctx.getImageData(0,0,W,H);
     photo=document.createElement('canvas');photo.width=W;photo.height=H;photo.getContext('2d').putImageData(base,0,0);
-    setMode('m0');URL.revokeObjectURL(im.src);
+    document.body.classList.add('full');fit();setMode('m0');URL.revokeObjectURL(im.src);
   };
   im.src=URL.createObjectURL(f);e.target.value='';
 };
@@ -211,6 +229,22 @@ function atualizar(){
 }
 
 // ---------- toque e arraste ----------
+// Tela cheia: a foto é ajustada para ocupar o máximo possível da tela
+function fit(){
+  if(!base||!document.body.classList.contains('full'))return;
+  const w=$('wrap').clientWidth,h=$('wrap').clientHeight,s=Math.min(w/W,h/H);
+  cv.style.width=Math.floor(W*s)+'px';cv.style.height=Math.floor(H*s)+'px';
+  lupa();
+}
+addEventListener('resize',fit);
+addEventListener('orientationchange',()=>setTimeout(fit,250));
+// impede seleção (fundo azul) e menu de segurar na foto
+cv.addEventListener('contextmenu',e=>e.preventDefault());
+document.addEventListener('selectstart',e=>{
+  const t=e.target.nodeType===1?e.target:e.target.parentElement;
+  if(!(t&&t.closest('#resBox')))e.preventDefault();
+});
+
 function xy(e){
   const r=cv.getBoundingClientRect();
   return [Math.round((e.clientX-r.left)*W/r.width),Math.round((e.clientY-r.top)*H/r.height)];
@@ -303,14 +337,13 @@ function calcular(){
   });
   const best=out.reduce((a,c)=>c.centro<a.centro?c:a);
   const diff=Math.abs(out[0].centro-out[1].centro);
-  let h='';
+  let h=`<div class='mut'>Centro do bolim ao centro da bola</div>`;
   out.forEach(r=>{
     const ini=r===best?`<span class='win'>🏆 `:'<span>';
-    h+=`<div>${ini}Bola ${r.n}</span>: <b>${fm(r.centro)} cm</b> do centro do bolim ao centro da bola</div>`;
+    h+=`<div>${ini}Bola ${r.n}</span>: <b>${fm(r.centro)} cm</b></div>`;
   });
   const nota=diff<1?` — diferença muito pequena (${fm(diff)} cm), confira com a trena.`:` (por ${fm(diff)} cm)`;
   h+=`<div><b>Mais perto: bola ${best.n}</b>${nota}</div>`;
-  h+=`<div class='mut'>Escala: bola de ${fm(BOLA_CM)} cm = ${Math.round(a1.d)} px nesta foto.</div>`;
   $('resBox').innerHTML=h;$('resBox').classList.remove('hide');
 }
 
