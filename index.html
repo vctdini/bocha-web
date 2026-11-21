@@ -4,8 +4,6 @@
 <meta charset='utf-8'>
 <meta name='viewport' content='width=device-width, initial-scale=1, viewport-fit=cover'>
 <title>Medidor de Bocha</title>
-<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-2218852240238644"
-     crossorigin="anonymous"></script>
 <style>
 :root{--bg:#f6f5f1;--fg:#1d1d1b;--card:#fff;--mut:#6b6b66;--ac:#1f7a4d;--acfg:#fff;--bd:#d9d7cf;--bad:#c0392b;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 @media (prefers-color-scheme:dark){:root{--bg:#161715;--fg:#ecebe6;--card:#222421;--mut:#9a9a93;--ac:#3fae77;--acfg:#0b1a12;--bd:#3a3c38;--bad:#ff7b6b}}
@@ -28,7 +26,11 @@ input[type=range]{width:100%}
 .res div:last-child{border:0}
 .win{color:var(--ac);font-weight:700}
 .hide{display:none}
-#wrap{position:relative}
+#wrap{position:relative;margin-bottom:10px}
+#fl{position:absolute;bottom:8px;gap:6px;flex-direction:column;align-items:center;z-index:2}
+#fl:not(.hide){display:flex}
+#fl button{width:56px;height:56px;padding:0;font-size:30px;line-height:1;border-radius:50%;box-shadow:0 2px 10px rgba(0,0,0,.5);touch-action:none}
+#fd{background:rgba(0,0,0,.7);color:#fff;font-size:12px;padding:3px 8px;border-radius:10px;white-space:nowrap}
 #lupa{position:absolute;top:8px;width:55%;max-width:300px;aspect-ratio:1;border:2px solid #ffd400;border-radius:14px;background:#000;pointer-events:none;box-shadow:0 2px 12px rgba(0,0,0,.55)}
 </style>
 </head>
@@ -47,20 +49,14 @@ input[type=range]{width:100%}
 <div id='wrap'>
   <canvas id='cv' width='300' height='200'></canvas>
   <canvas id='lupa' class='hide'></canvas>
-</div>
-
-<div class='card' style='margin-top:10px'>
-  <label class='mut'>Tolerância de cor: <b id='tolv'>45</b> (aumente se o círculo ficar pequeno, diminua se vazar)</label>
-  <input id='tol' type='range' min='15' max='120' value='45'>
+  <div id='fl' class='hide'>
+    <button id='dp' aria-label='Aumentar o círculo'>+</button>
+    <div id='fd'></div>
+    <button id='dm' aria-label='Diminuir o círculo'>−</button>
+  </div>
 </div>
 
 <div id='adjBox' class='card hide'>
-  <label class='mut'>Tamanho do círculo (ajuste até cobrir o objeto)</label>
-  <div class='row' style='flex-wrap:nowrap'>
-    <button id='dm' style='flex:0 0 52px;padding:8px'>−</button>
-    <input id='sz' type='range' min='10' max='400' value='100'>
-    <button id='dp' style='flex:0 0 52px;padding:8px'>+</button>
-  </div>
   <div id='info' class='mut' style='margin-top:6px'></div>
   <button id='conf' class='pri' style='margin-top:8px;width:100%'>Confirmar este objeto</button>
   <button id='cancel' style='margin-top:8px;width:100%'>✖ Cancelar este círculo</button>
@@ -75,6 +71,7 @@ const cv=$('cv'),ctx=cv.getContext('2d');
 const lp=$('lupa'),lx=lp.getContext('2d');let photo=null;   // photo = cópia limpa da foto, usada pela lupa
 const TOL_PX=1;   // diferença máxima aceita entre os diâmetros das duas bolas (1 pixel)
 const BOLA_CM=10.7;   // diâmetro real da bola em cm (usado só para converter o resultado em centímetros)
+const TOL_COR=45;   // tolerância de cor da detecção automática (fixa)
 let base=null,W=0,H=0,mode='m0',objs=[],cur=null;
 // objs = [bolim, bola 1, bola 2]
 
@@ -93,11 +90,24 @@ function setMode(m,keep){
   redraw();lupa();
 }
 $('refazer').onclick=()=>setMode('m0');
-$('tol').oninput=e=>{$('tolv').textContent=e.target.value;};
-$('sz').oninput=e=>{if(cur){cur.d=+e.target.value;atualizar();}};
-// ajuste fino do diâmetro: − e + mudam 1 pixel por toque
-function nudge(k){if(cur){cur.d=Math.max(10,cur.d+k);$('sz').value=Math.round(cur.d);atualizar();}}
-$('dm').onclick=()=>nudge(-1);$('dp').onclick=()=>nudge(1);
+// ajuste do diâmetro: 1 pixel por vez
+function nudge(k){if(cur){cur.d=Math.max(10,cur.d+k);atualizar();}}
+// botões flutuantes − e +: segurar o botão repete o ajuste
+function holdBtn(id,k){
+  const el=$(id);let t1,t2;
+  const stop=()=>{clearTimeout(t1);clearInterval(t2);};
+  el.addEventListener('pointerdown',e=>{e.preventDefault();nudge(k);t1=setTimeout(()=>{t2=setInterval(()=>nudge(k),50);},350);});
+  ['pointerup','pointerleave','pointercancel'].forEach(ev=>el.addEventListener(ev,stop));
+}
+holdBtn('dm',-1);holdBtn('dp',1);
+// roda do mouse sobre a foto (computador): girar para cima aumenta, para baixo diminui
+let acc=0;
+cv.addEventListener('wheel',e=>{
+  if(!cur||mode==='fim')return;
+  e.preventDefault();
+  acc+=e.deltaMode===1?e.deltaY*33:e.deltaY;
+  while(Math.abs(acc)>=50){nudge(acc<0?1:-1);acc+=acc<0?50:-50;}
+},{passive:false});
 // cancelar o círculo atual (continua na mesma etapa)
 $('cancel').onclick=()=>setMode(mode,true);
 // desfazer o último objeto confirmado (bolim, bola 1 ou bola 2) e voltar uma etapa
@@ -168,8 +178,8 @@ function redraw(){
 
 // Lupa: mostra a foto bem ampliada ao redor do centro do círculo, para alinhar com precisão
 function lupa(){
-  if(!cur||!photo||mode==='fim'){lp.classList.add('hide');return;}
-  lp.classList.remove('hide');
+  if(!cur||!photo||mode==='fim'){lp.classList.add('hide');$('fl').classList.add('hide');return;}
+  lp.classList.remove('hide');$('fl').classList.remove('hide');
   const k=Math.min(2,window.devicePixelRatio||1),S=Math.round(lp.getBoundingClientRect().width*k);
   if(lp.width!==S)lp.width=lp.height=S;
   const Z=Math.max(1.2,Math.min(6,0.9*S/cur.d)),h=S/Z;   // Z = pixels da lupa por pixel da foto
@@ -181,6 +191,7 @@ function lupa(){
   lx.moveTo(S/2,0);lx.lineTo(S/2,S);lx.moveTo(0,S/2);lx.lineTo(S,S/2);lx.stroke();
   // a lupa fica no canto oposto ao círculo, para não ficar sob o dedo
   const dir=cur.cx/W>0.5;lp.style.left=dir?'8px':'auto';lp.style.right=dir?'auto':'8px';
+  const fl=$('fl');fl.style.left=dir?'8px':'auto';fl.style.right=dir?'auto':'8px';
 }
 
 // Redesenha e confere se as duas bolas têm o mesmo diâmetro (só na bola 2)
@@ -194,6 +205,8 @@ function atualizar(){
       (ok?'Diâmetros iguais ✔':'❌ Diâmetros diferentes: ajuste o círculo (use − e +) até ficarem iguais.');
   }
   $('info').textContent=t;$('info').className=ok?'mut':'bad';$('conf').disabled=!ok;
+  $('fd').textContent=cur?(mode==='m2'?`${Math.round(cur.d)} / ${Math.round(objs[1].d)} px`:`${Math.round(cur.d)} px`):'';
+  $('fd').style.background=ok?'rgba(0,0,0,.7)':'#c0392b';
 }
 
 // ---------- toque e arraste ----------
@@ -222,11 +235,10 @@ cv.addEventListener('pointerup',fimDrag);cv.addEventListener('pointercancel',fim
 // Toque: detecta o objeto (na bola 2 usa a cor da bola 1) e mostra o círculo para ajuste
 function tapAt(x,y){
   if(mode==='fim')return;
-  const tol=+$('tol').value,pc=patch(x,y);
+  const tol=TOL_COR,pc=patch(x,y);
   const ref=mode==='m2'?objs[1].col:null;
   const col=ref&&dist(ref,pc)<tol*1.5?ref:pc;
   cur=segment(x,y,col,tol)||{cx:x,cy:y,d:Math.round(mode==='m2'?objs[1].d:W/6),col:pc};
-  $('sz').max=Math.round(Math.min(W,H)*0.6);$('sz').value=Math.round(cur.d);
   $('adjBox').classList.remove('hide');
   const nome={m0:'do bolim',m1:'da bola 1',m2:'da bola 2'}[mode];
   $('msg').innerHTML=`Arraste o círculo até o <b>centro</b> ${nome}, ajuste o tamanho e toque em <b>Confirmar</b>.`;
