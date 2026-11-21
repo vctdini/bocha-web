@@ -40,11 +40,11 @@ body.full #wrap{position:fixed;top:0;left:0;right:0;bottom:0;z-index:50;margin:0
 body.full #cv{border-radius:0}
 body.full #lupa{top:calc(env(safe-area-inset-top,0px) + 92px)}
 body.full #fl{bottom:calc(env(safe-area-inset-bottom,0px) + 190px)}
-body.full #msgc{position:fixed;top:env(safe-area-inset-top,0px);left:8px;right:8px;z-index:60;margin:8px 0 0;padding:8px 12px;font-size:14px;background:rgba(0,0,0,.72);color:#fff;border-color:transparent}
-#bar{display:flex;flex-direction:column;gap:6px;width:44px;margin-bottom:10px}
+body.full #msgc{position:fixed;top:calc(env(safe-area-inset-top,0px) + 8px);left:50%;transform:translateX(-50%);width:max-content;max-width:92vw;z-index:60;margin:0;padding:8px 16px;font-size:16px;text-align:center;background:rgba(0,0,0,.6);color:#fff;border-color:transparent;pointer-events:none}
+#bar{display:flex;flex-direction:row;gap:6px;margin-bottom:10px}
 #bar>*{flex:none;width:44px;height:44px;padding:0;font-size:20px;display:flex;align-items:center;justify-content:center;border-radius:12px}
 body.full #bar{position:fixed;left:8px;bottom:calc(env(safe-area-inset-bottom,0px) + 8px);z-index:60;margin:0}
-body.full #adjBox{position:fixed;left:60px;right:8px;bottom:calc(env(safe-area-inset-bottom,0px) + 84px);z-index:60;margin:0;max-height:40vh;overflow:auto}
+body.full #adjBox{position:fixed;left:8px;right:8px;bottom:calc(env(safe-area-inset-bottom,0px) + 64px);z-index:60;margin:0;max-height:40vh;overflow:auto}
 body.full #resBox{position:fixed;top:calc(env(safe-area-inset-top,0px) + 8px);left:50%;transform:translateX(-50%);z-index:60;margin:0;width:max-content;max-width:92vw;padding:8px 14px;font-size:15px;background:rgba(0,0,0,.55);color:#fff;border-color:transparent;pointer-events:none}
 body.full #resBox div{padding:2px 0;border:0}
 body.full #resBox .win{color:#6ee7a8}
@@ -100,11 +100,11 @@ function setMode(m,keep){
   mode=m;cur=null;if(!keep)objs=[];
   $('resBox').classList.add('hide');$('adjBox').classList.add('hide');
   const M={
-    m0:'Fotografe de cima as bolas perto do bolim e toque no <b>bolim</b>.',
-    m1:'Toque na <b>primeira bola</b> a medir.',
-    m2:'Toque na <b>segunda bola</b> a medir. As duas bolas precisam ter o <b>mesmo diâmetro</b>.',
+    m0:'Clique no centro do bolim.',
+    m1:'Clique no centro da bola número 1.',
+    m2:'Clique no centro da bola número 2.',
     fim:'Pronto! Toque em Refazer para uma nova medição.'};
-  $('msg').innerHTML=M[m];
+  $('msg').innerHTML=(!base&&m==='m0')?'Toque em 📷 para tirar a foto.':M[m];
   $('msgc').classList.toggle('hide',m==='fim');   // no resultado, a barra de instrução some para não cobrir a foto
   redraw();lupa();
 }
@@ -302,8 +302,6 @@ function tapAt(x,y){
   const col=ref&&dist(ref,pc)<tol*1.5?ref:pc;
   cur=segment(x,y,col,tol)||{cx:x,cy:y,d:Math.round(mode==='m2'?objs[1].d:W/6),col:pc};
   $('adjBox').classList.remove('hide');
-  const nome={m0:'do bolim',m1:'da bola 1',m2:'da bola 2'}[mode];
-  $('msg').innerHTML=`Arraste o círculo até o <b>centro</b> ${nome}. Use <b>dois dedos</b> (ou a roda do mouse) para aumentar ou diminuir e toque em <b>✔</b> para confirmar.`;
   atualizar();
 }
 
